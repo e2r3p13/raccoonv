@@ -1,7 +1,11 @@
 [package]
-name = "ropv"
+name = "racoonv"
 version = "0.1.0"
 edition = "2021"
+
+[[bin]]
+name = "rv"
+path = "src/main.rs"
 
 [dependencies]
 capstone = "0.11.0"
