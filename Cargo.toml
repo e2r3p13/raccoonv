@@ -9,3 +9,4 @@ path = "src/main.rs"
 
 [dependencies]
 capstone = "0.11.0"
+colored = "2.0.0"

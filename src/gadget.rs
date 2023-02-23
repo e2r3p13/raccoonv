@@ -1,6 +1,12 @@
 use std::{error, fmt};
 
 use capstone::{Instructions, OwnedInsn, Capstone};
+use colored::*;
+
+pub enum OutputMode {
+    Inline,
+    Block,
+}
 
 #[derive(Debug)]
 pub struct GadgetError {
@@ -30,6 +36,51 @@ impl<'a> Gadget<'a> {
             }
         }
         return Ok(g);
+    }
+
+    pub fn print(&self, mode: OutputMode) {
+        match mode {
+            OutputMode::Block => self.print_block(),
+            OutputMode::Inline => self.print_inline(),
+        };
+    }
+
+    fn print_block(&self) {
+        for (i, ins) in self.insns.iter().enumerate() {
+            let branch: bool = i == self.insns.len() - 1;
+
+            let mut insstr = format!("{} {}",
+                ins.mnemonic().unwrap(),
+                ins.op_str().unwrap(),
+            );
+            if branch {
+                insstr = insstr.red().to_string();
+            }
+            println!("{:#08x}     {}",
+                ins.address(),
+                insstr,
+            );
+        }
+    }
+
+    fn print_inline(&self) {
+        let mut acc = String::from(format!("{:#08x}     ", self.insns.first().unwrap().address()));
+        for (i, ins) in self.insns.iter().enumerate() {
+            let branch: bool = i == self.insns.len() - 1;
+
+            let mut insstr = format!("{} {}",
+                ins.mnemonic().unwrap(),
+                ins.op_str().unwrap(),
+            );
+            if branch {
+                insstr = insstr.red().to_string();
+            }
+            acc.push_str(&insstr);
+            if !branch {
+                acc.push_str(if ins.op_str().unwrap().len() == 0 {"; "} else {" ; "});
+            }
+        }
+        println!("{}", acc);
     }
 
 }
