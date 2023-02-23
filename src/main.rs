@@ -5,6 +5,7 @@ use capstone::arch::riscv::RiscVInsn;
 use std::iter;
 
 use gadget::Gadget;
+use gadget::OutputMode;
 
 const ALIGNMENT: usize = 2;
 const MAX_INSNS: usize = 5;
@@ -77,6 +78,10 @@ fn main() {
         let gadgets = find_gadgets_at_root(&cs, root, &code);
         for gadget in gadgets {
             if !unique_gadgets.contains(&gadget) {
+                gadget.print(OutputMode::Inline);
+                println!();
+                gadget.print(OutputMode::Block);
+                println!();
                 unique_gadgets.push(gadget);
             }
         }
