@@ -1,11 +1,13 @@
 mod gadget;
+mod err;
 
-use capstone::prelude::*;
-use capstone::arch::riscv::RiscVInsn;
-use std::iter;
+use std::{iter, error::Error};
 
-use gadget::Gadget;
-use gadget::OutputMode;
+use capstone::{prelude::*, arch::riscv::RiscVInsn};
+use elf::{ElfBytes ,endian};
+use colored::Colorize;
+
+use gadget::{Gadget, OutputMode};
 
 const ALIGNMENT: usize = 2;
 const MAX_INSNS: usize = 5;
@@ -22,6 +24,14 @@ const BRANCH_INSNS: &[RiscVInsn] = &[
     RiscVInsn::RISCV_INS_URET,
 ];
 
+pub fn get_text<'a>(elf: &'a ElfBytes<endian::AnyEndian>) -> Result<(&'a [u8], u64), Box<dyn Error>> {
+    if let Ok(Some(shdr)) = elf.section_header_by_name(".text") {
+        let data = elf.section_data(&shdr)?.0;
+        return Ok((data, shdr.sh_addr));
+    }
+    return Err(Box::new(err::RVError {msg: String::from("There is no .text section. The binary may be stripped")}));
+}
+
 fn find_gadget_roots(cs: &capstone::Capstone, code: &[u8]) -> Vec<usize> {
     let mut roots = Vec::new();
 
@@ -37,7 +47,7 @@ fn find_gadget_roots(cs: &capstone::Capstone, code: &[u8]) -> Vec<usize> {
     return roots;
 }
 
-fn find_gadgets_at_root<'a>(cs: &'a capstone::Capstone, root: usize, code: &'a [u8]) -> Vec<Gadget<'a>> {
+fn find_gadgets_at_root<'a>(cs: &'a capstone::Capstone, root: usize, addr: u64, code: &'a [u8]) -> Vec<Gadget<'a>> {
     let mut gadgets: Vec<Gadget> = Vec::new();
 
     for size in ((MIN_INSSZ * 2)..(MAX_INSNS * MAX_INSSZ)).step_by(ALIGNMENT) {
@@ -45,8 +55,9 @@ fn find_gadgets_at_root<'a>(cs: &'a capstone::Capstone, root: usize, code: &'a [
             break;
         }
 
-        let window = &code[(root - size)..root];
-        if let Ok(insns) = cs.disasm_all(window, 0x0) {
+        let base = root - size;
+        let window = &code[base..root];
+        if let Ok(insns) = cs.disasm_all(window, addr + base as u64) {
             if insns.len() <= MAX_INSNS {
                 if let Ok(gadget) = Gadget::create(&cs, insns) {
                     gadgets.push(gadget);
@@ -58,8 +69,34 @@ fn find_gadgets_at_root<'a>(cs: &'a capstone::Capstone, root: usize, code: &'a [
 }
 
 fn main() {
-    // RISC-V code with some branching instructions (C extension)
-    let code: &[u8] = b"\x05\x45\x93\x08\xd0\x05\x73\x00\x00\x00\x82\x90\x02\x94\x82\x93\x02\x95\x67\x80\x00\x00";
+    let path = "tests/ch91";
+    let outmode = OutputMode::Inline;
+
+    let data = match std::fs::read(path) {
+        Ok(raw) => raw,
+        Err(e) => {
+            println!("{} Failed to read '{}'. {}", "ERROR:".red(), path, e);
+            return;
+        }
+    };
+    let elf = match ElfBytes::<endian::AnyEndian>::minimal_parse(&data) {
+        Ok(elf) => elf,
+        Err(_) => {
+            println!("{} Failed to parse '{}'. Make sure to provide a valid ELF file", "ERROR:".red(), path);
+            return;
+        }
+    };
+    if elf.ehdr.e_machine != elf::abi::EM_RISCV || elf.ehdr.class != elf::file::Class::ELF64 {
+        println!("{} racoonv only supports Risc-V binaries (ISA RV64IC)", "ERROR:".red());
+        return;
+    }
+    let (code, addr) = match get_text(&elf) {
+        Ok(text) => text,
+        Err(e) => {
+            println!("{} Failed to find code in '{}'. {}", "ERROR:".red(), path, e);
+            return;
+        }
+    };
 
     let mut cs = Capstone::new()
         .riscv()
@@ -75,15 +112,14 @@ fn main() {
 
     cs.set_detail(true).expect("Failed to update Capstone object");
     for root in gadget_roots {
-        let gadgets = find_gadgets_at_root(&cs, root, &code);
+        let gadgets = find_gadgets_at_root(&cs, root, addr, &code);
         for gadget in gadgets {
             if !unique_gadgets.contains(&gadget) {
-                gadget.print(OutputMode::Inline);
-                println!();
-                gadget.print(OutputMode::Block);
-                println!();
+                gadget.print(outmode);
                 unique_gadgets.push(gadget);
             }
         }
     }
+    println!("----------");
+    println!("Found {} unique gadgets.", unique_gadgets.len());
 }
