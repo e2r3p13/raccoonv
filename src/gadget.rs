@@ -1,16 +1,11 @@
-use std::{error, fmt};
-
 use capstone::{Instructions, OwnedInsn, Capstone};
 use colored::*;
+use crate::err::RVError;
 
+#[derive (Clone, Copy)]
 pub enum OutputMode {
     Inline,
     Block,
-}
-
-#[derive(Debug)]
-pub struct GadgetError {
-    msg: String
 }
 
 pub struct Gadget<'a> {
@@ -20,7 +15,7 @@ pub struct Gadget<'a> {
 
 impl<'a> Gadget<'a> {
 
-    pub fn create(cs: &'a Capstone, insns: Instructions<'a>) -> Result<Self, GadgetError> {
+    pub fn create(cs: &'a Capstone, insns: Instructions<'a>) -> Result<Self, RVError> {
         let mut g = Gadget {
             insns: insns.iter().map(|x| OwnedInsn::from(x)).collect(),
             hash: 5381,
@@ -31,7 +26,7 @@ impl<'a> Gadget<'a> {
                 g.hash = g.hash.wrapping_mul(33).wrapping_add(*b as u32);
             }
             if let Err(_) = cs.insn_detail(ins) {
-                let err = GadgetError { msg: String::from("Failed to get instruction details") };
+                let err = RVError { msg: String::from("Failed to get instruction details") };
                 return Err(err);
             }
         }
@@ -86,19 +81,7 @@ impl<'a> Gadget<'a> {
 }
 
 impl PartialEq for Gadget<'_> {
-
     fn eq(&self, other: &Self) -> bool {
         return self.hash == other.hash;
     }
-
-}
-
-impl error::Error for GadgetError {}
-
-impl fmt::Display for GadgetError {
-
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Error: {}", &self.msg)
-    }
-
 }
