@@ -51,14 +51,12 @@ fn find_gadgets_at_root<'a>(cs: &'a capstone::Capstone, root: usize, addr: u64, 
     let mut gadgets: Vec<Gadget> = Vec::new();
 
     for size in ((MIN_INSSZ * 2)..(MAX_INSNS * MAX_INSSZ)).step_by(ALIGNMENT) {
-        if size > root {
-            break;
-        }
+        if size > root { break; }
 
         let base = root - size;
-        let window = &code[base..root];
-        if let Ok(insns) = cs.disasm_all(window, addr + base as u64) {
-            if insns.len() <= MAX_INSNS {
+        let slice = &code[base..root];
+        if let Ok(insns) = cs.disasm_all(slice, addr + base as u64) {
+            if insns.len() > 1 && insns.len() <= MAX_INSNS {
                 if let Ok(gadget) = Gadget::create(&cs, insns) {
                     gadgets.push(gadget);
                 }
