@@ -45,26 +45,45 @@ impl<'a> Gadget<'a> {
             let branch: bool = i == self.insns.len() - 1;
 
             let mut insstr = format!("{} {}",
-                ins.mnemonic().unwrap(),
+                {
+                    let mn = ins.mnemonic().unwrap();
+                    if mn.starts_with("c.") {
+                        &mn[2..]
+                    } else {
+                        mn
+                    }
+                },
                 ins.op_str().unwrap(),
             );
             if branch {
                 insstr = insstr.red().to_string();
             }
-            println!("{:#08x}     {}",
+            let bytes = ins.bytes().iter().fold(String::new(), |mut acc, b| {
+                acc.push_str(&format!("{:02x} ", b));
+                acc
+            });
+            println!("{:#010x}    {:>015}   {}",
                 ins.address(),
+                bytes,
                 insstr,
             );
         }
     }
 
     fn print_inline(&self) {
-        let mut acc = String::from(format!("{:#08x}     ", self.insns.first().unwrap().address()));
+        let mut acc = String::from(format!("{:#010x}     ", self.insns.first().unwrap().address()));
         for (i, ins) in self.insns.iter().enumerate() {
             let branch: bool = i == self.insns.len() - 1;
 
             let mut insstr = format!("{} {}",
-                ins.mnemonic().unwrap(),
+                {
+                    let mn = ins.mnemonic().unwrap();
+                    if mn.starts_with("c.") {
+                        &mn[2..]
+                    } else {
+                        mn
+                    }
+                },
                 ins.op_str().unwrap(),
             );
             if branch {
