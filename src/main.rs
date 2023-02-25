@@ -22,6 +22,8 @@ const BRANCH_INSNS: &[RiscVInsn] = &[
     RiscVInsn::RISCV_INS_MRET,
     RiscVInsn::RISCV_INS_SRET,
     RiscVInsn::RISCV_INS_URET,
+    RiscVInsn::RISCV_INS_C_J,
+    RiscVInsn::RISCV_INS_C_JR,
 ];
 
 pub fn get_text<'a>(elf: &'a ElfBytes<endian::AnyEndian>) -> Result<(&'a [u8], u64), Box<dyn Error>> {
@@ -32,11 +34,22 @@ pub fn get_text<'a>(elf: &'a ElfBytes<endian::AnyEndian>) -> Result<(&'a [u8], u
     return Err(Box::new(err::RVError {msg: String::from("There is no .text section. The binary may be stripped")}));
 }
 
+pub fn get_code<'a>(elf: &'a ElfBytes<endian::AnyEndian>) -> Result<(usize, usize, u64), Box<dyn Error>> {
+    if let Some(segs) = elf.segments() {
+        for phdr in segs {
+            if phdr.p_flags == elf::abi::PF_R | elf::abi::PF_X {
+                return Ok((phdr.p_offset as usize, phdr.p_filesz as usize, phdr.p_vaddr));
+            }
+        }
+    }
+    return Err(Box::new(err::RVError {msg: String::from("There is no .text section. The binary may be stripped")}));
+}
+
 fn find_gadget_roots(cs: &capstone::Capstone, code: &[u8]) -> Vec<usize> {
     let mut roots = Vec::new();
 
     for off in (0..code.len() + ALIGNMENT).step_by(ALIGNMENT) {
-        if let Ok(insns) = cs.disasm_count(&code[off..], (0x1010c + off) as u64, 1) {
+        if let Ok(insns) = cs.disasm_count(&code[off..], off as u64, 1) {
             if let Some(ins) = insns.first() {
                 if BRANCH_INSNS.contains(&RiscVInsn::from(ins.id().0)) {
                     roots.push(off + ins.len());
@@ -67,8 +80,8 @@ fn find_gadgets_at_root<'a>(cs: &'a capstone::Capstone, root: usize, addr: u64, 
 }
 
 fn main() {
-    let path = "tests/ch91";
-    let outmode = OutputMode::Inline;
+    let path = "./tests/ch91";
+    let outmode = OutputMode::Block;
 
     let data = match std::fs::read(path) {
         Ok(raw) => raw,
@@ -88,7 +101,7 @@ fn main() {
         println!("{} racoonv only supports Risc-V binaries (ISA RV64IC)", "ERROR:".red());
         return;
     }
-    let (code, addr) = match get_text(&elf) {
+    let (off, size, addr) = match get_code(&elf) {
         Ok(text) => text,
         Err(e) => {
             println!("{} Failed to find code in '{}'. {}", "ERROR:".red(), path, e);
@@ -106,6 +119,7 @@ fn main() {
     let mut unique_gadgets: Vec<Gadget> = Vec::new();
 
     cs.set_detail(false).expect("Failed to update Capstone object");
+    let code = &data[off..(off + size)];
     let gadget_roots = find_gadget_roots(&cs, &code);
 
     cs.set_detail(true).expect("Failed to update Capstone object");
@@ -114,6 +128,7 @@ fn main() {
         for gadget in gadgets {
             if !unique_gadgets.contains(&gadget) {
                 gadget.print(outmode);
+                println!();
                 unique_gadgets.push(gadget);
             }
         }
