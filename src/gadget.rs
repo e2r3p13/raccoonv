@@ -25,7 +25,14 @@ impl<'a> Gadget<'a> {
             for b in ins.bytes() {
                 g.hash = g.hash.wrapping_mul(33).wrapping_add(*b as u32);
             }
-            if let Err(_) = cs.insn_detail(ins) {
+            if let Ok(_details) = cs.insn_detail(ins) {
+                // if let Some(rd) = details.arch_detail().riscv() {
+                //     println!("{:?}", ins.id());
+                //     for op in rd.operands() {
+                //         println!("{:?}", op);
+                //     }
+                // }
+            } else {
                 let err = RVError { msg: String::from("Failed to get instruction details") };
                 return Err(err);
             }
