@@ -11,3 +11,4 @@ path = "src/main.rs"
 capstone = "0.11.0"
 elf = "0.7.2"
 colored = "2.0.0"
+clap = { version = "4.1.6", features = ["derive"] }
