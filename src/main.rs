@@ -6,6 +6,7 @@ use std::{iter, error::Error};
 use capstone::{prelude::*, arch::riscv::RiscVInsn};
 use elf::{ElfBytes ,endian};
 use colored::Colorize;
+use clap::Parser;
 
 use gadget::{Gadget, OutputMode};
 
@@ -25,6 +26,31 @@ const BRANCH_INSNS: &[RiscVInsn] = &[
     RiscVInsn::RISCV_INS_C_J,
     RiscVInsn::RISCV_INS_C_JR,
 ];
+
+/// Command line tool to find JOP gadgets in a Risc-V application
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// Path of the target binary
+    #[arg()]
+    path: String,
+
+    /// Display gadgets in a single line
+    #[arg(short, long)]
+    inline: bool,
+
+    /// Only find gadgets containing the <ins> instruction
+    #[arg(short, long, value_name="ins")]
+    op: Option<String>,
+
+    /// Only find gadgets where the <reg> register is written to
+    #[arg(short, long, value_name="reg")]
+    wr: Option<String>,
+
+    /// Only find gadgets where the <reg> register is read from
+    #[arg(short, long, value_name="reg")]
+    rr: Option<String>,
+}
 
 pub fn get_text<'a>(elf: &'a ElfBytes<endian::AnyEndian>) -> Result<(&'a [u8], u64), Box<dyn Error>> {
     if let Ok(Some(shdr)) = elf.section_header_by_name(".text") {
@@ -80,20 +106,23 @@ fn find_gadgets_at_root<'a>(cs: &'a capstone::Capstone, root: usize, addr: u64, 
 }
 
 fn main() {
-    let path = "./tests/ch91";
-    let outmode = OutputMode::Block;
+    let args = Args::parse();
+    let outmode = match args.inline {
+        true => OutputMode::Inline,
+        false => OutputMode::Block,
+    };
 
-    let data = match std::fs::read(path) {
+    let data = match std::fs::read(&args.path) {
         Ok(raw) => raw,
         Err(e) => {
-            println!("{} Failed to read '{}'. {}", "ERROR:".red(), path, e);
+            println!("{} Failed to read '{}'. {}", "ERROR:".red(), &args.path, e);
             return;
         }
     };
     let elf = match ElfBytes::<endian::AnyEndian>::minimal_parse(&data) {
         Ok(elf) => elf,
         Err(_) => {
-            println!("{} Failed to parse '{}'. Make sure to provide a valid ELF file", "ERROR:".red(), path);
+            println!("{} Failed to parse '{}'. Make sure to provide a valid ELF file", "ERROR:".red(), &args.path);
             return;
         }
     };
@@ -104,7 +133,7 @@ fn main() {
     let (off, size, addr) = match get_code(&elf) {
         Ok(text) => text,
         Err(e) => {
-            println!("{} Failed to find code in '{}'. {}", "ERROR:".red(), path, e);
+            println!("{} Failed to find code in '{}'. {}", "ERROR:".red(), &args.path, e);
             return;
         }
     };
@@ -128,7 +157,9 @@ fn main() {
         for gadget in gadgets {
             if !unique_gadgets.contains(&gadget) {
                 gadget.print(outmode);
-                println!();
+                if let OutputMode::Block = outmode {
+                    println!();
+                }
                 unique_gadgets.push(gadget);
             }
         }
