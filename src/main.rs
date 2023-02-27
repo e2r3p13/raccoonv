@@ -1,31 +1,17 @@
 mod gadget;
 mod err;
+mod query;
+mod core;
 
-use std::{iter, error::Error};
+use std::iter;
 
-use capstone::{prelude::*, arch::riscv::RiscVInsn};
+use capstone::prelude::*;
 use elf::{ElfBytes ,endian};
 use colored::Colorize;
 use clap::Parser;
 
 use gadget::{Gadget, OutputMode};
-
-const ALIGNMENT: usize = 2;
-const MAX_INSNS: usize = 5;
-const MAX_INSSZ: usize = 4;
-const MIN_INSSZ: usize = 2;
-
-const BRANCH_INSNS: &[RiscVInsn] = &[
-    RiscVInsn::RISCV_INS_JAL,
-    RiscVInsn::RISCV_INS_JALR,
-    RiscVInsn::RISCV_INS_C_JAL,
-    RiscVInsn::RISCV_INS_C_JALR,
-    RiscVInsn::RISCV_INS_MRET,
-    RiscVInsn::RISCV_INS_SRET,
-    RiscVInsn::RISCV_INS_URET,
-    RiscVInsn::RISCV_INS_C_J,
-    RiscVInsn::RISCV_INS_C_JR,
-];
+use query::Query;
 
 /// Command line tool to find JOP gadgets in a Risc-V application
 #[derive(Parser, Debug)]
@@ -52,65 +38,24 @@ struct Args {
     rr: Option<String>,
 }
 
-pub fn get_text<'a>(elf: &'a ElfBytes<endian::AnyEndian>) -> Result<(&'a [u8], u64), Box<dyn Error>> {
-    if let Ok(Some(shdr)) = elf.section_header_by_name(".text") {
-        let data = elf.section_data(&shdr)?.0;
-        return Ok((data, shdr.sh_addr));
-    }
-    return Err(Box::new(err::RVError {msg: String::from("There is no .text section. The binary may be stripped")}));
-}
-
-pub fn get_code<'a>(elf: &'a ElfBytes<endian::AnyEndian>) -> Result<(usize, usize, u64), Box<dyn Error>> {
-    if let Some(segs) = elf.segments() {
-        for phdr in segs {
-            if phdr.p_flags == elf::abi::PF_R | elf::abi::PF_X {
-                return Ok((phdr.p_offset as usize, phdr.p_filesz as usize, phdr.p_vaddr));
-            }
-        }
-    }
-    return Err(Box::new(err::RVError {msg: String::from("There is no .text section. The binary may be stripped")}));
-}
-
-fn find_gadget_roots(cs: &capstone::Capstone, code: &[u8]) -> Vec<usize> {
-    let mut roots = Vec::new();
-
-    for off in (0..code.len() + ALIGNMENT).step_by(ALIGNMENT) {
-        if let Ok(insns) = cs.disasm_count(&code[off..], off as u64, 1) {
-            if let Some(ins) = insns.first() {
-                if BRANCH_INSNS.contains(&RiscVInsn::from(ins.id().0)) {
-                    roots.push(off + ins.len());
-                }
-            }
-        }
-    }
-    return roots;
-}
-
-fn find_gadgets_at_root<'a>(cs: &'a capstone::Capstone, root: usize, addr: u64, code: &'a [u8]) -> Vec<Gadget<'a>> {
-    let mut gadgets: Vec<Gadget> = Vec::new();
-
-    for size in ((MIN_INSSZ * 2)..(MAX_INSNS * MAX_INSSZ)).step_by(ALIGNMENT) {
-        if size > root { break; }
-
-        let base = root - size;
-        let slice = &code[base..root];
-        if let Ok(insns) = cs.disasm_all(slice, addr + base as u64) {
-            if insns.len() > 1 && insns.len() <= MAX_INSNS {
-                if let Ok(gadget) = Gadget::create(&cs, insns) {
-                    gadgets.push(gadget);
-                }
-            }
-        }
-    }
-    return gadgets;
-}
-
 fn main() {
     let args = Args::parse();
     let outmode = match args.inline {
         true => OutputMode::Inline,
         false => OutputMode::Block,
     };
+
+    let mut query = Query::create();
+
+    if let Some(reg) = args.rr {
+       query.add_rr_constraint(core::reg_from_str(&reg)); 
+    }
+    if let Some(reg) = args.wr {
+       query.add_rw_constraint(core::reg_from_str(&reg)); 
+    }
+    if let Some(ins) = args.op {
+       query.add_op_constraint(core::ins_from_str(&ins)); 
+    }
 
     let data = match std::fs::read(&args.path) {
         Ok(raw) => raw,
@@ -130,7 +75,7 @@ fn main() {
         println!("{} racoonv only supports Risc-V binaries (ISA RV64IC)", "ERROR:".red());
         return;
     }
-    let (off, size, addr) = match get_code(&elf) {
+    let (off, size, addr) = match core::get_code(&elf) {
         Ok(text) => text,
         Err(e) => {
             println!("{} Failed to find code in '{}'. {}", "ERROR:".red(), &args.path, e);
@@ -149,11 +94,11 @@ fn main() {
 
     cs.set_detail(false).expect("Failed to update Capstone object");
     let code = &data[off..(off + size)];
-    let gadget_roots = find_gadget_roots(&cs, &code);
+    let gadget_roots = core::find_gadget_roots(&cs, &code);
 
     cs.set_detail(true).expect("Failed to update Capstone object");
     for root in gadget_roots {
-        let gadgets = find_gadgets_at_root(&cs, root, addr, &code);
+        let gadgets = core::find_gadgets_at_root(&cs, root, addr, &code);
         for gadget in gadgets {
             if !unique_gadgets.contains(&gadget) {
                 gadget.print(outmode);
