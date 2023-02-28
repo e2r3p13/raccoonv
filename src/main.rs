@@ -25,17 +25,17 @@ struct Args {
     #[arg(short, long)]
     inline: bool,
 
-    /// Only find gadgets containing the <ins> instruction
-    #[arg(short, long, value_name="ins")]
-    op: Option<String>,
-
     /// Only find gadgets where the <reg> register is written to
-    #[arg(short, long, value_name="reg")]
-    wr: Option<String>,
+    #[arg(short, long, value_name="reg", value_parser=core::reg_from_str)]
+    wr: Option<RegId>,
 
     /// Only find gadgets where the <reg> register is read from
-    #[arg(short, long, value_name="reg")]
-    rr: Option<String>,
+    #[arg(short, long, value_name="reg", value_parser=core::reg_from_str)]
+    rr: Option<RegId>,
+
+    /// Only find gadgets containing the <ins> instruction
+    #[arg(short, long, value_name="ins", value_parser=core::ins_from_str)]
+    op: Option<InsnId>,
 }
 
 fn main() {
@@ -44,18 +44,7 @@ fn main() {
         true => OutputMode::Inline,
         false => OutputMode::Block,
     };
-
-    let mut query = Query::create();
-
-    if let Some(reg) = args.rr {
-       query.add_rr_constraint(core::reg_from_str(&reg)); 
-    }
-    if let Some(reg) = args.wr {
-       query.add_rw_constraint(core::reg_from_str(&reg)); 
-    }
-    if let Some(ins) = args.op {
-       query.add_op_constraint(core::ins_from_str(&ins)); 
-    }
+    let query = Query::create_from(args.rr, args.wr, args.op);
 
     let data = match std::fs::read(&args.path) {
         Ok(raw) => raw,
@@ -111,4 +100,6 @@ fn main() {
     }
     println!("----------");
     println!("Found {} unique gadgets.", unique_gadgets.len());
+    println!("----------");
+    println!("{}", query);
 }

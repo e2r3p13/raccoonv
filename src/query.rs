@@ -10,18 +10,26 @@ pub struct Query {
 
 impl Query {
 
+    #[allow(dead_code)]
     pub fn create() -> Self {
         return Query {rr: None, wr: None, op: None};
     }
 
+    pub fn create_from(rr: Option<RegId>, wr: Option<RegId>, op: Option<InsnId>) -> Self {
+        return Query {rr, wr, op};
+    }
+
+    #[allow(dead_code)]
     pub fn add_rr_constraint(&mut self, reg: RegId) {
         self.rr = Some(reg);
     }
 
+    #[allow(dead_code)]
     pub fn add_rw_constraint(&mut self, reg: RegId) {
         self.wr = Some(reg);
     }
 
+    #[allow(dead_code)]
     pub fn add_op_constraint(&mut self, ins: InsnId) {
         self.op = Some(ins);
     }
