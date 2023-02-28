@@ -5,7 +5,7 @@ use capstone::prelude::{RegId, InsnId};
 use elf::{ElfBytes ,endian};
 
 use crate::gadget::Gadget;
-use crate::err;
+use crate::err::RVError;
 
 const ALIGNMENT: usize = 2;
 const MAX_INSNS: usize = 5;
@@ -24,7 +24,7 @@ const BRANCH_INSNS: &[RiscVInsn] = &[
     RISCV_INS_C_JR,
 ];
 
-pub fn ins_from_str(ins: &str) -> InsnId {
+pub fn ins_from_str(ins: &str) -> Result<InsnId, RVError> {
     let val = match ins {
         "add" => RISCV_INS_ADD,
         "addi" => RISCV_INS_ADDI,
@@ -145,10 +145,13 @@ pub fn ins_from_str(ins: &str) -> InsnId {
         "xori" => RISCV_INS_XORI,
         _ => RISCV_INS_INVALID,
     };
-    return InsnId(val as u32);
+    match val {
+        RISCV_INS_INVALID => Err(RVError {msg: String::from("not an instruction")}),
+        _ => Ok(InsnId(val as u32))
+    }
 }
 
-pub fn reg_from_str(reg: &str) -> capstone::RegId {
+pub fn reg_from_str(reg: &str) -> Result<RegId, RVError> {
     let val = match reg {
         "a0" => RISCV_REG_A0,
         "a1" => RISCV_REG_A1,
@@ -217,7 +220,10 @@ pub fn reg_from_str(reg: &str) -> capstone::RegId {
         "" => RISCV_REG_ZERO,
         _ => RISCV_REG_INVALID,
     };
-    RegId(val as u16)
+    match val {
+        RISCV_REG_INVALID => Err(RVError {msg: String::from("not a register")}),
+        _ => Ok(RegId(val as u16))
+    }
 }
 
 pub fn get_code<'a>(elf: &'a ElfBytes<endian::AnyEndian>) -> Result<(usize, usize, u64), Box<dyn Error>> {
@@ -228,7 +234,7 @@ pub fn get_code<'a>(elf: &'a ElfBytes<endian::AnyEndian>) -> Result<(usize, usiz
             }
         }
     }
-    return Err(Box::new(err::RVError {msg: String::from("There is no .text section. The binary may be stripped")}));
+    return Err(Box::new(RVError {msg: String::from("There is no .text section. The binary may be stripped")}));
 }
 
 pub fn find_gadget_roots(cs: &capstone::Capstone, code: &[u8]) -> Vec<usize> {
