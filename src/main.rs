@@ -96,7 +96,7 @@ fn main() {
     for root in gadget_roots {
         let gadgets = core::find_gadgets_at_root(&cs, root, addr, &code);
         for gadget in gadgets {
-            if !unique_gadgets.contains(&gadget) && gadget.satisfies_query(&cs, &query) {
+            if !unique_gadgets.contains(&gadget) && gadget.satisfies(&query) {
                 gadget.print(outmode);
                 if let OutputMode::Block = outmode {
                     println!();
