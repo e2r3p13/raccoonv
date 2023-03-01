@@ -10,20 +10,20 @@ pub struct Query {
     pub rr: Option<capstone::RegId>,
     pub wr: Option<capstone::RegId>,
     pub op: Option<capstone::InsnId>,
+    empty: bool,
 }
 
 impl Query {
 
-    #[allow(dead_code)]
-    pub fn create() -> Self {
-        return Query {rr: None, wr: None, op: None};
-    }
-
     pub fn create_from(rr: Option<RegId>, wr: Option<RegId>, op: Option<InsnId>) -> Self {
-        return Query {rr, wr, op};
+        let empty: bool = rr == None && wr == None && op == None;
+        return Query {rr, wr, op, empty};
     }
 
     pub fn is_satisfied_by_ins(&self, ins: &GadgetInsn) -> bool {
+        if self.empty {
+            return false;
+        }
         if let Some(op) = self.op {
             if op != ins.id() {
                 return false;
@@ -45,6 +45,9 @@ impl Query {
     }
 
     pub fn is_satisfied_by_gadget(&self, gadget: &Gadget) -> bool {
+        if self.empty {
+            return true;
+        }
         for ins in gadget.insns() {
             if self.is_satisfied_by_ins(&ins) {
                 return true;
