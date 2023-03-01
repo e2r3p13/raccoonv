@@ -1,3 +1,5 @@
+use std::fmt;
+
 use capstone::{
     Instructions,
     Insn,
@@ -11,6 +13,7 @@ use colored::*;
 
 use crate::err::RVError;
 use crate::query::Query;
+use crate::core::is_branching;
 
 #[derive (Clone, Copy)]
 pub enum OutputMode {
@@ -21,6 +24,14 @@ pub enum OutputMode {
 pub struct GadgetInsn<'a> {
     ins: OwnedInsn<'a>,
     ops: Vec<RiscVOperand>
+}
+
+impl fmt::Display for GadgetInsn<'_> {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.mnemonic().unwrap(), self.op_str().unwrap())
+    }
+
 }
 
 impl<'a> GadgetInsn<'a> {
@@ -64,6 +75,10 @@ impl<'a> GadgetInsn<'a> {
         return &self.ops;
     }
 
+    pub fn satisfies(&self, q: &Query) -> bool {
+        return q.is_satisfied_by_ins(self);
+    }
+
 }
 
 pub struct Gadget<'a> {
@@ -103,67 +118,57 @@ impl<'a> Gadget<'a> {
         return q.is_satisfied_by_gadget(self);
     }
 
-    pub fn print(&self, mode: OutputMode) {
+    pub fn print(&self, q: &Query, mode: OutputMode) {
         match mode {
-            OutputMode::Block => self.print_block(),
-            OutputMode::Inline => self.print_inline(),
+            OutputMode::Block => self.print_block(q),
+            OutputMode::Inline => self.print_inline(q),
         };
     }
 
-    fn print_block(&self) {
-        for (i, ins) in self.insns.iter().enumerate() {
-            let branch: bool = i == self.insns.len() - 1;
-
-            let mut insstr = format!("{} {}", {
-                let mn = ins.mnemonic().unwrap();
-                if mn.starts_with("c.") {
-                    &mn[2..]
-                } else {
-                    mn
-                }
-            },
-                ins.op_str().unwrap(),
-            );
-            if branch {
-                insstr = insstr.red().to_string();
-            }
+    fn print_block(&self, q: &Query) {
+        for ins in self.insns.iter() {
+            let addr = format!("{:#010x}", ins.address());
             let bytes = ins.bytes().iter().fold(String::new(), |mut acc, b| {
                 acc.push_str(&format!("{:02x} ", b));
                 acc
             });
-            println!("{:#010x}    {:>015}   {}",
-                ins.address(),
+            let bytes = format!("{:>015}", bytes);
+            let insstr = format!("{}", ins);             
+
+            println!("{} {} {}",
+                addr.yellow(),
                 bytes,
-                insstr,
+                if ins.satisfies(q) {
+                    insstr.blue()
+                } else if is_branching(ins.id()) {
+                    insstr.black().red()
+                } else {
+                    insstr.white()
+                }
             );
         }
     }
 
-    fn print_inline(&self) {
-        let mut acc = String::from(format!("{:#010x}     ", self.insns.first().unwrap().address()));
-        for (i, ins) in self.insns.iter().enumerate() {
-            let branch: bool = i == self.insns.len() - 1;
-
-            let mut insstr = format!("{} {}",
-                {
-                    let mn = ins.mnemonic().unwrap();
-                    if mn.starts_with("c.") {
-                        &mn[2..]
-                    } else {
-                        mn
-                    }
-                },
-                ins.op_str().unwrap(),
-            );
-            if branch {
-                insstr = insstr.red().to_string();
-            }
-            acc.push_str(&insstr);
-            if !branch {
-                acc.push_str(if ins.op_str().unwrap().len() == 0 {"; "} else {" ; "});
-            }
+    fn print_inline(&self, q: &Query) {
+        let addr = if let Some(a) = self.insns.first() {
+            format!("{:#010x}", a.address())
+        } else {
+            return;
+        };
+        let mut acc = String::new();
+        for ins in self.insns.iter() {
+            let insstr = format!("{}", ins);             
+            acc.push_str(&format!("{} ; ",
+                if ins.satisfies(q) {
+                    insstr.blue()
+                } else if is_branching(ins.id()) {
+                    insstr.black().red()
+                } else {
+                    insstr.white()
+                }
+            ));
         }
-        println!("{}", acc);
+        println!("{}   {}", addr.yellow(), acc);
     }
 
 }

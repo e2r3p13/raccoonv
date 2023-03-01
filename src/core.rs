@@ -24,6 +24,10 @@ const BRANCH_INSNS: &[RiscVInsn] = &[
     RISCV_INS_C_JR,
 ];
 
+pub fn is_branching(id: InsnId) -> bool {
+    return BRANCH_INSNS.contains(&RiscVInsn::from(id.0));
+}
+
 pub fn ins_from_str(ins: &str) -> Result<InsnId, RVError> {
     let val = match ins {
         "add" => RISCV_INS_ADD,
