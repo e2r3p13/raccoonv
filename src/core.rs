@@ -149,6 +149,9 @@ pub fn ins_from_str(ins: &str) -> Result<InsnId, RVError> {
         "xori" => RISCV_INS_XORI,
         _ => RISCV_INS_INVALID,
     };
+    if !ins.starts_with("c.") {
+        return ins_from_str(&format!("c.{}", ins));
+    }
     match val {
         RISCV_INS_INVALID => Err(RVError {msg: String::from("not an instruction")}),
         _ => Ok(InsnId(val as u32))
