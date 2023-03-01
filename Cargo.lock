@@ -236,7 +236,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "racoonv"
+name = "raccoonv"
 version = "0.1.0"
 dependencies = [
  "capstone",
