@@ -29,7 +29,11 @@ pub struct GadgetInsn<'a> {
 impl fmt::Display for GadgetInsn<'_> {
 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.mnemonic().unwrap(), self.op_str().unwrap())
+        let mut mnemonic = self.mnemonic().unwrap();
+        if mnemonic.starts_with("c.") {
+            mnemonic = &mnemonic[2..];
+        }
+        write!(f, "{} {}", mnemonic, self.op_str().unwrap())
     }
 
 }
