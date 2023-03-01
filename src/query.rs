@@ -1,7 +1,9 @@
-use capstone::prelude::*;
-use capstone::Insn;
-use capstone::arch::riscv::{RiscVInsnDetail, RiscVOperand};
 use std::{iter, fmt};
+
+use capstone::prelude::*;
+use capstone::arch::riscv::RiscVOperand;
+
+use crate::gadget::{Gadget, GadgetInsn};
 
 #[derive (Debug)]
 pub struct Query {
@@ -21,8 +23,7 @@ impl Query {
         return Query {rr, wr, op};
     }
 
-    pub fn is_satisfied(&self, ins: &Insn, d: &InsnDetail, ad: &RiscVInsnDetail) -> bool {
-        println!("{:?} {:?}", d.regs_read(), d.regs_write());
+    pub fn is_satisfied_by_ins(&self, ins: &GadgetInsn) -> bool {
         if let Some(op) = self.op {
             if op != ins.id() {
                 return false;
@@ -30,30 +31,26 @@ impl Query {
         }
 
         if let Some(wr) = self.wr {
-            if !ad.operands().any(|e| {
-                if let RiscVOperand::Reg(id) = e {
-                    id == wr
-                } else {
-                    false
-                }
-            }) {
+            if !ins.operands().contains(&RiscVOperand::Reg(wr)) {
                 return false;
             }
         }
-
         if let Some(rr) = self.rr {
-            if !ad.operands().any(|e| {
-                if let RiscVOperand::Reg(id) = e {
-                    id == rr
-                } else {
-                    false
-                }
-            }) {
+            if !ins.operands().contains(&RiscVOperand::Reg(rr)) {
                 return false;
             }
         }
 
         return true;
+    }
+
+    pub fn is_satisfied_by_gadget(&self, gadget: &Gadget) -> bool {
+        for ins in gadget.insns() {
+            if self.is_satisfied_by_ins(&ins) {
+                return true;
+            }
+        }
+        return false;
     }
 
 }
