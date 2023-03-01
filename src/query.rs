@@ -1,4 +1,6 @@
 use capstone::prelude::*;
+use capstone::Insn;
+use capstone::arch::riscv::{RiscVInsnDetail, RiscVOperand};
 use std::{iter, fmt};
 
 #[derive (Debug)]
@@ -19,19 +21,39 @@ impl Query {
         return Query {rr, wr, op};
     }
 
-    #[allow(dead_code)]
-    pub fn add_rr_constraint(&mut self, reg: RegId) {
-        self.rr = Some(reg);
-    }
+    pub fn is_satisfied(&self, ins: &Insn, d: &InsnDetail, ad: &RiscVInsnDetail) -> bool {
+        println!("{:?} {:?}", d.regs_read(), d.regs_write());
+        if let Some(op) = self.op {
+            if op != ins.id() {
+                return false;
+            }
+        }
 
-    #[allow(dead_code)]
-    pub fn add_rw_constraint(&mut self, reg: RegId) {
-        self.wr = Some(reg);
-    }
+        if let Some(wr) = self.wr {
+            if !ad.operands().any(|e| {
+                if let RiscVOperand::Reg(id) = e {
+                    id == wr
+                } else {
+                    false
+                }
+            }) {
+                return false;
+            }
+        }
 
-    #[allow(dead_code)]
-    pub fn add_op_constraint(&mut self, ins: InsnId) {
-        self.op = Some(ins);
+        if let Some(rr) = self.rr {
+            if !ad.operands().any(|e| {
+                if let RiscVOperand::Reg(id) = e {
+                    id == rr
+                } else {
+                    false
+                }
+            }) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
 }

@@ -1,6 +1,8 @@
 use capstone::{Instructions, OwnedInsn, Capstone};
 use colored::*;
+
 use crate::err::RVError;
+use crate::query;
 
 #[derive (Clone, Copy)]
 pub enum OutputMode {
@@ -102,6 +104,19 @@ impl<'a> Gadget<'a> {
             }
         }
         println!("{}", acc);
+    }
+
+    pub fn satisfies_query(&self, cs: &capstone::Capstone, q: &query::Query) -> bool {
+        for ins in self.insns.iter() {
+            if let Ok(details) = cs.insn_detail(&ins) {
+                if let Some(archdetails) = details.arch_detail().riscv() {
+                    if q.is_satisfied(&ins, &details, &archdetails) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
 }

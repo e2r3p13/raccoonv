@@ -39,12 +39,17 @@ struct Args {
 }
 
 fn main() {
+
+    /* Arguments parsing */
+
     let args = Args::parse();
     let outmode = match args.inline {
         true => OutputMode::Inline,
         false => OutputMode::Block,
     };
     let query = Query::create_from(args.rr, args.wr, args.op);
+
+    /* ELF parsing */
 
     let data = match std::fs::read(&args.path) {
         Ok(raw) => raw,
@@ -72,6 +77,8 @@ fn main() {
         }
     };
 
+    /* Gadgets finding & displaying */
+
     let mut cs = Capstone::new()
         .riscv()
         .mode(arch::riscv::ArchMode::RiscV64)
@@ -89,7 +96,7 @@ fn main() {
     for root in gadget_roots {
         let gadgets = core::find_gadgets_at_root(&cs, root, addr, &code);
         for gadget in gadgets {
-            if !unique_gadgets.contains(&gadget) {
+            if !unique_gadgets.contains(&gadget) && gadget.satisfies_query(&cs, &query) {
                 gadget.print(outmode);
                 if let OutputMode::Block = outmode {
                     println!();
@@ -100,6 +107,4 @@ fn main() {
     }
     println!("----------");
     println!("Found {} unique gadgets.", unique_gadgets.len());
-    println!("----------");
-    println!("{}", query);
 }
