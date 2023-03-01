@@ -1,37 +1,46 @@
-# RacoonV - A RiscV ROP gadget finder
+# RaccoonV - A Risc-V JOP gadget finder
 
-RacoonV is a linux command line tool. It has many advantages compared to a real racoon: Insead of digging holes in your garden to find food, it will investigate binaries to find ROP gadgets.
+RaccoonV is a linux command line tool. It has many advantages compared to a real raccoon: Insead of digging holes in your garden to find food, it will investigate binaries to find JOP gadgets.
 
-Another advantage is that it is made out of Rust instead of legs, snouts and stuff like this. This makes it more robust than a real racoon, indeed.
+Another advantage is that it is made out of Rust instead of legs, snouts and stuff like this. This makes it more robust than a real raccoon, indeed.
 
 ⚠️ It only works on **Linux** for **elf** binaries with **Risc-V** architecture (ISA RV64IC).
 
 ## Quick start
 
-First, you need to install the [Rust toolchain](https://www.rust-lang.org/tools/install) and the [Capstone library](https://www.capstone-engine.org). Done? Congratz, you can move on.
+First, you need to install the [Rust toolchain](https://www.rust-lang.org/tools/install).
 
 Here are quick instructions to build/install the project. Please refer to the [cargo documentation](https://doc.rust-lang.org/cargo/commands/cargo-doc.html) for more details.
 
+**Build:**
 ```bash
-git clone git@github.com:lfalkau/racoonv.git
-cd racoonv
 cargo build --release
+```
 
-# If you want to install it in your home directory
+**Install:**
+```bash
+# In your home directory
 cargo install --path .
+# Or systemwise
+sudo cargo install --path . --root /bin
 ```
 
 ## Usage
 
-RacoonV is currently in early phases of development, and I have to admit than command line arguments are not yet accepted. Even the code in which it searches for gadget is hardcoded for now.
-
-However, here is the expected synopsis of RacoonV:
-
 ```
-rv [options] <binary>
-```
+Usage: rv [OPTIONS] <PATH>
 
-I plan to add options to display gadgets inline or blockwise, to query specific instruction opcodes & registers etc...
+Arguments:
+  <PATH>  Path of the target binary
+
+Options:
+  -i, --inline    Display gadgets in a single line
+  -w, --wr <reg>  Only find gadgets where the <reg> register is written to
+  -r, --rr <reg>  Only find gadgets where the <reg> register is read from
+  -o, --op <ins>  Only find gadgets containing the <ins> instruction
+  -h, --help      Print help
+  -V, --version   Print version
+```
 
 ---
 Feedbacks & suggestions are welcome, especially concerning the project name.
