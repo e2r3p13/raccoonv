@@ -8,7 +8,6 @@ use crate::gadget::Gadget;
 use crate::err::RVError;
 
 const ALIGNMENT: usize = 2;
-const MAX_INSNS: usize = 5;
 const MAX_INSSZ: usize = 4;
 const MIN_INSSZ: usize = 2;
 
@@ -259,16 +258,16 @@ pub fn find_gadget_roots(cs: &capstone::Capstone, code: &[u8]) -> Vec<usize> {
     return roots;
 }
 
-pub fn find_gadgets_at_root<'a>(cs: &'a capstone::Capstone, root: usize, addr: u64, code: &'a [u8]) -> Vec<Gadget<'a>> {
+pub fn find_gadgets_at_root<'a>(cs: &'a capstone::Capstone, root: usize, addr: u64, code: &'a [u8], max: usize) -> Vec<Gadget<'a>> {
     let mut gadgets: Vec<Gadget> = Vec::new();
 
-    for size in ((MIN_INSSZ * 2)..(MAX_INSNS * MAX_INSSZ)).step_by(ALIGNMENT) {
+    for size in ((MIN_INSSZ * 2)..(max * MAX_INSSZ)).step_by(ALIGNMENT) {
         if size > root { break; }
 
         let base = root - size;
         let slice = &code[base..root];
         if let Ok(insns) = cs.disasm_all(slice, addr + base as u64) {
-            if insns.len() > 1 && insns.len() <= MAX_INSNS {
+            if insns.len() > 1 && insns.len() <= max {
                 if let Ok(gadget) = Gadget::create(&cs, insns) {
                     gadgets.push(gadget);
                 }
