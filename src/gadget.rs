@@ -147,7 +147,7 @@ impl<'a> Gadget<'a> {
                 } else if is_branching(ins.id()) {
                     insstr.black().red()
                 } else {
-                    insstr.white()
+                    insstr.color("useless").clear()
                 }
             );
         }
@@ -168,7 +168,7 @@ impl<'a> Gadget<'a> {
                 } else if is_branching(ins.id()) {
                     insstr.black().red()
                 } else {
-                    insstr.white()
+                    insstr.color("useless").clear()
                 }
             ));
         }
