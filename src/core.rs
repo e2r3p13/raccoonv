@@ -1,12 +1,12 @@
 use std::error::Error;
 
-use capstone::arch::DetailsArchInsn;
+use capstone::Capstone;
 use capstone::arch::riscv::RiscVOperand;
 use capstone::arch::riscv::{RiscVInsn, RiscVInsn::*, RiscVReg::*};
 use capstone::prelude::{RegId, InsnId};
 use elf::{ElfBytes ,endian};
 
-use crate::gadget::Gadget;
+use crate::gadget::{Gadget, GadgetInsn, GadgetRoot};
 use crate::err::RVError;
 
 const ALIGNMENT: usize = 2;
@@ -25,7 +25,7 @@ const BRANCH_INSNS: &[RiscVInsn] = &[
     RISCV_INS_C_JR,
 ];
 
-pub fn is_branching(id: InsnId) -> bool {
+pub fn is_branching_ins(id: InsnId) -> bool {
     return BRANCH_INSNS.contains(&RiscVInsn::from(id.0));
 }
 
@@ -245,27 +245,26 @@ pub fn get_code<'a>(elf: &'a ElfBytes<endian::AnyEndian>) -> Result<(usize, usiz
     return Err(Box::new(RVError {msg: String::from("There is no .text section. The binary may be stripped")}));
 }
 
-pub fn find_gadget_roots(cs: &capstone::Capstone, code: &[u8], jr: Option<RegId>) -> Vec<usize> {
+pub fn find_gadget_roots<'a>(cs: &'a capstone::Capstone, code: &[u8], jr: Option<RegId>) -> Vec<GadgetRoot<'a>> {
     let mut roots = Vec::new();
 
-    for off in (0..code.len() + ALIGNMENT).step_by(ALIGNMENT) {
+    for off in (0..code.len()).step_by(ALIGNMENT) {
         if let Ok(insns) = cs.disasm_count(&code[off..], off as u64, 1) {
             if let Some(ins) = insns.first() {
-                if BRANCH_INSNS.contains(&RiscVInsn::from(ins.id().0)) {
-                    if let Ok(details) = cs.insn_detail(ins) {
-                        if let Some(arch) = details.arch_detail().riscv() {
-                            for op in arch.operands().collect::<Vec<_>>() {
-                                if let RiscVOperand::Reg(reg) = op {
-                                    if reg == RegId(0) {
-                                        continue
-                                    }
-                                    if let Some(target) = jr {
-                                        if reg != target {
-                                            continue
-                                        }
-                                    }
-                                    roots.push(off + ins.len());
+                if let Ok(ins) = GadgetInsn::create(cs, ins) {
+                    if is_branching_ins(ins.id()) {
+                        for op in ins.operands() {
+                            if let RiscVOperand::Reg(reg) = op {
+                                if reg == &RegId(0) {
+                                    continue
                                 }
+                                if let Some(target) = jr {
+                                    if reg != &target {
+                                        break
+                                    }
+                                }
+                                roots.push(GadgetRoot::from(ins, off as u64));
+                                break;
                             }
                         }
                     }
@@ -276,21 +275,45 @@ pub fn find_gadget_roots(cs: &capstone::Capstone, code: &[u8], jr: Option<RegId>
     return roots;
 }
 
-pub fn find_gadgets_at_root<'a>(cs: &'a capstone::Capstone, root: usize, addr: u64, code: &'a [u8], max: usize) -> Vec<Gadget<'a>> {
+pub fn find_gadgets_at_root<'a>(cs: &'a Capstone, root: GadgetRoot<'a>, addr: u64, code: &'a [u8], max: usize) -> Vec<Gadget<'a>> {
     let mut gadgets: Vec<Gadget> = Vec::new();
+    let mut insns: Vec<GadgetInsn> = Vec::new();
 
-    for size in ((MIN_INSSZ * 2)..(max * MAX_INSSZ)).step_by(ALIGNMENT) {
-        if size > root { break; }
+    disas_back_at(cs, &mut gadgets, root.clone(), &mut insns, addr, root.off, code, max);
+    return gadgets;
+}
 
-        let base = root - size;
-        let slice = &code[base..root];
-        if let Ok(insns) = cs.disasm_all(slice, addr + base as u64) {
-            if insns.len() > 1 && insns.len() <= max {
-                if let Ok(gadget) = Gadget::create(&cs, insns) {
-                    gadgets.push(gadget);
+fn disas_back_at<'a>(cs: &'a Capstone, gadgets: &mut Vec<Gadget<'a>>, root: GadgetRoot<'a>, insns: &mut Vec<GadgetInsn<'a>>, addr: u64, mut off: u64, code: &'a [u8], max: usize) {
+    if max == 0 || off == 0 {
+        if let Ok(g) = Gadget::create(root, insns.clone()) {
+            gadgets.push(g);
+        }
+        return;
+    }
+    
+    for i in (MIN_INSSZ as u64 ..= MAX_INSSZ as u64).step_by(ALIGNMENT) {
+        if i as u64 > off {
+            break;
+        }
+        off -= i;
+        if let Ok(ins) = cs.disasm_count(&code[off as usize..], addr + off, 1) {
+            if let Some(ins) = ins.first() {
+                if ins.len() != i as usize {
+                    return;
+                }
+                if is_branching_ins(ins.id()) {
+                    if let Ok(g) = Gadget::create(root, insns.clone()) {
+                        gadgets.push(g);
+                    }
+                    return;
+                }
+                if let Ok(ins) = GadgetInsn::create(cs, ins) {
+                    insns.push(ins);
+                    disas_back_at(cs, gadgets, root.clone(), insns, addr, off, code, max - 1);
+                    insns.pop();
                 }
             }
         }
     }
-    return gadgets;
+
 }

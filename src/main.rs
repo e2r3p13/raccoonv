@@ -10,7 +10,7 @@ use elf::{ElfBytes ,endian};
 use colored::Colorize;
 use clap::Parser;
 
-use gadget::{Gadget, OutputMode};
+use gadget::OutputMode;
 use query::Query;
 
 /// Command line tool to find JOP gadgets in a Risc-V application
@@ -96,32 +96,31 @@ fn main() {
 
     /* Gadgets finding & displaying */
 
-    let mut cs = Capstone::new()
+    let cs = Capstone::new()
         .riscv()
         .mode(arch::riscv::ArchMode::RiscV32)
         .extra_mode(iter::once(arch::riscv::ArchExtraMode::RiscVC))
+        .detail(true)
         .build()
         .expect("Failed to create Capstone object");
 
-    let mut unique_gadgets: Vec<Gadget> = Vec::new();
-
-    cs.set_detail(true).expect("Failed to update Capstone object");
     let code = &data[off..(off + size)];
     let gadget_roots = core::find_gadget_roots(&cs, &code, args.jr);
 
-    cs.set_detail(true).expect("Failed to update Capstone object");
+    let mut count = 0;
     for root in gadget_roots {
         let gadgets = core::find_gadgets_at_root(&cs, root, addr, &code, args.max);
         for gadget in gadgets {
-            if !unique_gadgets.contains(&gadget) && gadget.satisfies(&query) {
+            if gadget.satisfies(&query) {
+                count += 1;
                 gadget.print(&query, outmode);
                 if let OutputMode::Block = outmode {
                     println!();
                 }
-                unique_gadgets.push(gadget);
             }
         }
     }
+
     println!("----------");
-    println!("Found {} unique gadgets.", unique_gadgets.len());
+    println!("Found {} unique gadgets.", count);
 }
