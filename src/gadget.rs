@@ -1,7 +1,7 @@
 use std::fmt;
+use std::ops::Deref;
 
 use capstone::{
-    Instructions,
     Insn,
     InsnId,
     OwnedInsn,
@@ -13,7 +13,6 @@ use colored::*;
 
 use crate::err::RVError;
 use crate::query::Query;
-use crate::core::is_branching;
 
 #[derive (Clone, Copy)]
 pub enum OutputMode {
@@ -24,6 +23,17 @@ pub enum OutputMode {
 pub struct GadgetInsn<'a> {
     ins: OwnedInsn<'a>,
     ops: Vec<RiscVOperand>
+}
+
+impl<'a> Clone for GadgetInsn<'a> {
+
+    fn clone(&self) -> Self {
+        return GadgetInsn {
+            ins: OwnedInsn::from(self.ins.deref()),
+            ops: self.ops.clone()
+        }
+    }
+
 }
 
 impl fmt::Display for GadgetInsn<'_> {
@@ -40,7 +50,7 @@ impl fmt::Display for GadgetInsn<'_> {
 
 impl<'a> GadgetInsn<'a> {
 
-    fn create(cs: &'a Capstone, ins: &Insn) -> Result<Self, RVError> {
+    pub fn create(cs: &'a Capstone, ins: &Insn) -> Result<Self, RVError> {
         if let Ok(details) = cs.insn_detail(ins) {
             if let Some(arch) = details.arch_detail().riscv() {
                 let g = GadgetInsn {
@@ -83,33 +93,60 @@ impl<'a> GadgetInsn<'a> {
         return q.is_satisfied_by_ins(self);
     }
 
+    pub fn print(&self, q: &Query, last: bool) {
+        let addr = format!("{:#010x}", self.address());
+        let bytes = self.bytes().iter().fold(String::new(), |mut acc, b| {
+            acc.push_str(&format!("{:02x} ", b));
+            acc
+        });
+        let bytes = format!("{:>015}", bytes);
+        let insstr = format!("{}", self);             
+        
+        println!("{} {} {}",
+            addr.yellow(),
+            bytes,
+            if last {
+                insstr.red()
+            } else if self.satisfies(q) {
+                insstr.blue()
+            } else {
+                insstr.color("useless").clear()
+                }
+            );
+
+    }
+
+}
+
+#[derive(Clone)]
+pub struct GadgetRoot<'a> {
+    pub root: GadgetInsn<'a>,
+    pub off: u64,
+}
+
+impl<'a> GadgetRoot<'a> {
+
+    pub fn from(root: GadgetInsn<'a>, at: u64) -> Self {
+        return GadgetRoot {
+            root,
+            off: at
+        }
+    }
+
 }
 
 pub struct Gadget<'a> {
+    root: GadgetRoot<'a>,
     insns: Vec<GadgetInsn<'a>>,
-    hash: u32
-}
-
-impl PartialEq for Gadget<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        return self.hash == other.hash;
-    }
 }
 
 impl<'a> Gadget<'a> {
 
-    pub fn create(cs: &'a Capstone, insns: Instructions<'a>) -> Result<Self, RVError> {
-        let mut g = Gadget {
-            insns: Vec::new(),
-            hash: 5381,
+    pub fn create(root: GadgetRoot<'a>, insns: Vec<GadgetInsn<'a>>) -> Result<Self, RVError> {
+        let g = Gadget {
+            root,
+            insns,
         };
-
-        for ins in insns.as_ref() {
-            for b in ins.bytes() {
-                g.hash = g.hash.wrapping_mul(33).wrapping_add(*b as u32);
-            }
-            g.insns.push(GadgetInsn::create(cs, &ins)?);
-        }
 
         return Ok(g);
     }
@@ -130,27 +167,10 @@ impl<'a> Gadget<'a> {
     }
 
     fn print_block(&self, q: &Query) {
-        for ins in self.insns.iter() {
-            let addr = format!("{:#010x}", ins.address());
-            let bytes = ins.bytes().iter().fold(String::new(), |mut acc, b| {
-                acc.push_str(&format!("{:02x} ", b));
-                acc
-            });
-            let bytes = format!("{:>015}", bytes);
-            let insstr = format!("{}", ins);             
-
-            println!("{} {} {}",
-                addr.yellow(),
-                bytes,
-                if ins.satisfies(q) {
-                    insstr.blue()
-                } else if is_branching(ins.id()) {
-                    insstr.black().red()
-                } else {
-                    insstr.color("useless").clear()
-                }
-            );
+        for ins in self.insns.iter().rev() {
+            ins.print(q, false);
         }
+        self.root.root.print(q, true);
     }
 
     fn print_inline(&self, q: &Query) {
@@ -165,13 +185,13 @@ impl<'a> Gadget<'a> {
             acc.push_str(&format!("{} ; ",
                 if ins.satisfies(q) {
                     insstr.blue()
-                } else if is_branching(ins.id()) {
-                    insstr.black().red()
                 } else {
                     insstr.color("useless").clear()
                 }
             ));
         }
+        let insstr = format!("{}", self.root.root);             
+        acc.push_str(&format!("{}", insstr.red()));
         println!("{}   {}", addr.yellow(), acc);
     }
 
