@@ -77,8 +77,8 @@ fn main() {
                 return;
             }
         };
-        if elf.ehdr.e_machine != elf::abi::EM_RISCV || elf.ehdr.class != elf::file::Class::ELF64 {
-            println!("{} racoonv only supports Risc-V binaries (ISA RV64IC)", "ERROR:".red());
+        if elf.ehdr.e_machine != elf::abi::EM_RISCV || elf.ehdr.class != elf::file::Class::ELF32 {
+            println!("{} racoonv only supports Risc-V binaries (ISA RV32IC)", "ERROR:".red());
             return;
         }
         match core::get_code(&elf) {
@@ -94,7 +94,7 @@ fn main() {
 
     let mut cs = Capstone::new()
         .riscv()
-        .mode(arch::riscv::ArchMode::RiscV64)
+        .mode(arch::riscv::ArchMode::RiscV32)
         .extra_mode(iter::once(arch::riscv::ArchExtraMode::RiscVC))
         .build()
         .expect("Failed to create Capstone object");
