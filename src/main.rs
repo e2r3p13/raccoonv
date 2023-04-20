@@ -29,6 +29,10 @@ struct Args {
     #[arg(short, long, default_value="5")]
     max: usize,
 
+    /// Only find gadgets ending with a jump to <reg> register
+    #[arg(short, long, value_name="reg", value_parser=core::reg_from_str)]
+    jr: Option<RegId>,
+
     /// Only find gadgets where the <reg> register is written to
     #[arg(short, long, value_name="reg", value_parser=core::reg_from_str)]
     wr: Option<RegId>,
@@ -101,9 +105,9 @@ fn main() {
 
     let mut unique_gadgets: Vec<Gadget> = Vec::new();
 
-    cs.set_detail(false).expect("Failed to update Capstone object");
+    cs.set_detail(true).expect("Failed to update Capstone object");
     let code = &data[off..(off + size)];
-    let gadget_roots = core::find_gadget_roots(&cs, &code);
+    let gadget_roots = core::find_gadget_roots(&cs, &code, args.jr);
 
     cs.set_detail(true).expect("Failed to update Capstone object");
     for root in gadget_roots {
