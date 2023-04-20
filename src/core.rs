@@ -1,5 +1,7 @@
 use std::error::Error;
 
+use capstone::arch::DetailsArchInsn;
+use capstone::arch::riscv::RiscVOperand;
 use capstone::arch::riscv::{RiscVInsn, RiscVInsn::*, RiscVReg::*};
 use capstone::prelude::{RegId, InsnId};
 use elf::{ElfBytes ,endian};
@@ -243,14 +245,30 @@ pub fn get_code<'a>(elf: &'a ElfBytes<endian::AnyEndian>) -> Result<(usize, usiz
     return Err(Box::new(RVError {msg: String::from("There is no .text section. The binary may be stripped")}));
 }
 
-pub fn find_gadget_roots(cs: &capstone::Capstone, code: &[u8]) -> Vec<usize> {
+pub fn find_gadget_roots(cs: &capstone::Capstone, code: &[u8], jr: Option<RegId>) -> Vec<usize> {
     let mut roots = Vec::new();
 
     for off in (0..code.len() + ALIGNMENT).step_by(ALIGNMENT) {
         if let Ok(insns) = cs.disasm_count(&code[off..], off as u64, 1) {
             if let Some(ins) = insns.first() {
                 if BRANCH_INSNS.contains(&RiscVInsn::from(ins.id().0)) {
-                    roots.push(off + ins.len());
+                    if let Ok(details) = cs.insn_detail(ins) {
+                        if let Some(arch) = details.arch_detail().riscv() {
+                            for op in arch.operands().collect::<Vec<_>>() {
+                                if let RiscVOperand::Reg(reg) = op {
+                                    if reg == RegId(0) {
+                                        continue
+                                    }
+                                    if let Some(target) = jr {
+                                        if reg != target {
+                                            continue
+                                        }
+                                    }
+                                    roots.push(off + ins.len());
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
