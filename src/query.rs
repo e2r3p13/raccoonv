@@ -63,7 +63,7 @@ impl fmt::Display for Query {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let cs = Capstone::new()
             .riscv()
-            .mode(arch::riscv::ArchMode::RiscV64)
+            .mode(arch::riscv::ArchMode::RiscV32)
             .extra_mode(iter::once(arch::riscv::ArchExtraMode::RiscVC))
             .build()
             .expect("Failed to create Capstone object");
