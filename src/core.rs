@@ -283,9 +283,17 @@ pub fn find_gadgets_at_root<'a>(cs: &'a Capstone, root: GadgetRoot<'a>, addr: u6
     return gadgets;
 }
 
-fn disas_back_at<'a>(cs: &'a Capstone, gadgets: &mut Vec<Gadget<'a>>, root: GadgetRoot<'a>, insns: &mut Vec<GadgetInsn<'a>>, addr: u64, off: u64, code: &'a [u8], max: usize) -> bool {
+enum RState {
+    Ongoing,
+    Found,
+    Continue,
+}
+
+fn disas_back_at<'a>(cs: &'a Capstone, gadgets: &mut Vec<Gadget<'a>>, root: GadgetRoot<'a>, insns: &mut Vec<GadgetInsn<'a>>, addr: u64, off: u64, code: &'a [u8], max: usize) -> RState {
+    let mut state = RState::Ongoing;
+
     if max == 0 || off <= 0 {
-        return true ;
+        return RState::Found;
     }
     
     for i in (MIN_INSSZ as u64 ..= MAX_INSSZ as u64).step_by(ALIGNMENT) {
@@ -302,17 +310,20 @@ fn disas_back_at<'a>(cs: &'a Capstone, gadgets: &mut Vec<Gadget<'a>>, root: Gadg
                 }
                 if let Ok(ins) = GadgetInsn::create(cs, ins) {
                     insns.push(ins);
-                    if disas_back_at(cs, gadgets, root.clone(), insns, addr, off - i, code, max - 1) {
-                        if let Ok(g) = Gadget::create(root, insns.clone()) {
-                            gadgets.push(g);
-                        }
-                        insns.pop();
-                        return false;
+                    state = disas_back_at(cs, gadgets, root.clone(), insns, addr, off - i, code, max - 1);
+                    match state {
+                        RState::Ongoing => {
+
+                        },
+                        RState::Found => {
+                            if let Ok(g) = Gadget::create(root.clone(), insns.clone()) {
+                                gadgets.push(g);
+                            }
+                        },
                     }
-                    insns.pop();
                 }
             }
         }
     }
-    return true;
+    return !over;
 }

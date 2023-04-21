@@ -1,5 +1,6 @@
 use std::fmt;
 use std::ops::Deref;
+use std::hash::{Hash, Hasher};
 
 use capstone::{
     Insn,
@@ -140,6 +141,33 @@ pub struct Gadget<'a> {
     insns: Vec<GadgetInsn<'a>>,
 }
 
+impl<'a> Hash for Gadget<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for ins in &self.insns {
+            ins.bytes().hash(state);
+        }
+        self.root.root.bytes().hash(state);
+    }
+}
+
+impl<'a> PartialEq for Gadget<'a> {
+    fn eq(&self, other: &Gadget) -> bool {
+        if self.insns.len() != other.insns.len() {
+            return false;
+        }
+        for (si, oi) in self.insns.iter().zip(other.insns.iter()) {
+            if si.bytes() != oi.bytes() {
+                return false
+            }
+        }
+        return self.root.root.bytes() == other.root.root.bytes();
+    }
+}
+
+impl<'a> Eq for Gadget<'a> {
+
+}
+
 impl<'a> Gadget<'a> {
 
     pub fn create(root: GadgetRoot<'a>, insns: Vec<GadgetInsn<'a>>) -> Result<Self, RVError> {
@@ -149,20 +177,6 @@ impl<'a> Gadget<'a> {
         };
 
         return Ok(g);
-    }
-
-    pub fn hash(&self) -> u64 {
-        let mut hash: u64 = 5381;
-
-        for ins in &self.insns {
-            for b in ins.bytes() {
-                hash = hash.wrapping_mul(33).wrapping_add(*b as u64);
-            }
-        }
-        for b in self.root.root.ins.bytes() {
-            hash = hash.wrapping_mul(33).wrapping_add(*b as u64);
-        }
-        return hash;
     }
 
     pub fn insns(&self) -> &Vec<GadgetInsn> {

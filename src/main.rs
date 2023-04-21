@@ -4,7 +4,7 @@ mod query;
 mod core;
 
 use std::iter;
-use std::collections::HashMap;
+use std::collections::HashSet;
 
 use capstone::prelude::*;
 use elf::{ElfBytes ,endian};
@@ -108,18 +108,18 @@ fn main() {
     let code = &data[off..(off + size)];
     let gadget_roots = core::find_gadget_roots(&cs, &code, args.jr);
 
-    let mut gadgets_hashmap = HashMap::new();
+    let mut gadgets_hs = HashSet::new();
 
     for root in gadget_roots {
         let gadgets = core::find_gadgets_at_root(&cs, root, addr, &code, args.max);
         for gadget in gadgets {
             if gadget.satisfies(&query) {
-                gadgets_hashmap.insert(gadget.hash(), gadget);
+                gadgets_hs.insert(gadget);
             }
         }
     }
 
-    for (_, gadget) in &gadgets_hashmap {
+    for gadget in &gadgets_hs {
         gadget.print(&query, outmode);
         if let OutputMode::Block = outmode {
             println!();
@@ -127,5 +127,5 @@ fn main() {
     }
 
     println!("----------");
-    println!("Found {} unique gadgets.", gadgets_hashmap.len());
+    println!("Found {} unique gadgets.", gadgets_hs.len());
 }
