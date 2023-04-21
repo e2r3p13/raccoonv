@@ -283,37 +283,36 @@ pub fn find_gadgets_at_root<'a>(cs: &'a Capstone, root: GadgetRoot<'a>, addr: u6
     return gadgets;
 }
 
-fn disas_back_at<'a>(cs: &'a Capstone, gadgets: &mut Vec<Gadget<'a>>, root: GadgetRoot<'a>, insns: &mut Vec<GadgetInsn<'a>>, addr: u64, mut off: u64, code: &'a [u8], max: usize) {
-    if max == 0 || off == 0 {
-        if let Ok(g) = Gadget::create(root, insns.clone()) {
-            gadgets.push(g);
-        }
-        return;
+fn disas_back_at<'a>(cs: &'a Capstone, gadgets: &mut Vec<Gadget<'a>>, root: GadgetRoot<'a>, insns: &mut Vec<GadgetInsn<'a>>, addr: u64, off: u64, code: &'a [u8], max: usize) -> bool {
+    if max == 0 || off <= 0 {
+        return true ;
     }
     
     for i in (MIN_INSSZ as u64 ..= MAX_INSSZ as u64).step_by(ALIGNMENT) {
         if i as u64 > off {
             break;
         }
-        off -= i;
-        if let Ok(ins) = cs.disasm_count(&code[off as usize..], addr + off, 1) {
+        if let Ok(ins) = cs.disasm_count(&code[(off - i) as usize..], addr + (off - i), 1) {
             if let Some(ins) = ins.first() {
                 if ins.len() != i as usize {
-                    return;
+                    continue;
                 }
                 if is_branching_ins(ins.id()) {
-                    if let Ok(g) = Gadget::create(root, insns.clone()) {
-                        gadgets.push(g);
-                    }
-                    return;
+                    break;
                 }
                 if let Ok(ins) = GadgetInsn::create(cs, ins) {
                     insns.push(ins);
-                    disas_back_at(cs, gadgets, root.clone(), insns, addr, off, code, max - 1);
+                    if disas_back_at(cs, gadgets, root.clone(), insns, addr, off - i, code, max - 1) {
+                        if let Ok(g) = Gadget::create(root, insns.clone()) {
+                            gadgets.push(g);
+                        }
+                        insns.pop();
+                        return false;
+                    }
                     insns.pop();
                 }
             }
         }
     }
-
+    return true;
 }

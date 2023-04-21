@@ -151,6 +151,20 @@ impl<'a> Gadget<'a> {
         return Ok(g);
     }
 
+    pub fn hash(&self) -> u64 {
+        let mut hash: u64 = 5381;
+
+        for ins in &self.insns {
+            for b in ins.bytes() {
+                hash = hash.wrapping_mul(33).wrapping_add(*b as u64);
+            }
+        }
+        for b in self.root.root.ins.bytes() {
+            hash = hash.wrapping_mul(33).wrapping_add(*b as u64);
+        }
+        return hash;
+    }
+
     pub fn insns(&self) -> &Vec<GadgetInsn> {
         return &self.insns;
     }
