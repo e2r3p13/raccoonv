@@ -4,6 +4,7 @@ mod query;
 mod core;
 
 use std::iter;
+use std::collections::HashSet;
 
 use capstone::prelude::*;
 use elf::{ElfBytes ,endian};
@@ -20,6 +21,10 @@ struct Args {
     /// Path of the target binary
     #[arg()]
     path: String,
+
+    /// Find dispatcher gadgets
+    #[arg(short, long)]
+    dispatcher: bool,
 
     /// Display gadgets in a single line
     #[arg(short, long)]
@@ -59,14 +64,14 @@ fn main() {
         true => OutputMode::Inline,
         false => OutputMode::Block,
     };
-    let query = Query::create_from(args.rr, args.wr, args.op);
+    let query = Query::create_from(args.rr, args.wr, args.op, args.dispatcher);
 
     /* ELF parsing */
 
     let data = match std::fs::read(&args.path) {
         Ok(raw) => raw,
         Err(e) => {
-            println!("{} Failed to read '{}'. {}", "ERROR:".red(), &args.path, e);
+            eprintln!("{} Failed to read '{}'. {}", "ERROR:".red(), &args.path, e);
             return;
         }
     };
@@ -77,18 +82,18 @@ fn main() {
         let elf = match ElfBytes::<endian::AnyEndian>::minimal_parse(&data) {
             Ok(elf) => elf,
             Err(_) => {
-                println!("{} Failed to parse '{}'. Make sure to provide a valid ELF file", "ERROR:".red(), &args.path);
+                eprintln!("{} Failed to parse '{}'. Make sure to provide a valid ELF file", "ERROR:".red(), &args.path);
                 return;
             }
         };
         if elf.ehdr.e_machine != elf::abi::EM_RISCV || elf.ehdr.class != elf::file::Class::ELF32 {
-            println!("{} racoonv only supports Risc-V binaries (ISA RV32IC)", "ERROR:".red());
+            eprintln!("{} racoonv only supports Risc-V binaries (ISA RV32IC)", "ERROR:".red());
             return;
         }
         match core::get_code(&elf) {
             Ok(text) => text,
             Err(e) => {
-                println!("{} Failed to find code in '{}'. {}", "ERROR:".red(), &args.path, e);
+                eprintln!("{} Failed to find code in '{}'. {}", "ERROR:".red(), &args.path, e);
                 return;
             }
         }
@@ -107,20 +112,24 @@ fn main() {
     let code = &data[off..(off + size)];
     let gadget_roots = core::find_gadget_roots(&cs, &code, args.jr);
 
-    let mut count = 0;
+    let mut gadgets_hs = HashSet::new();
+
     for root in gadget_roots {
         let gadgets = core::find_gadgets_at_root(&cs, root, addr, &code, args.max);
         for gadget in gadgets {
             if gadget.satisfies(&query) {
-                count += 1;
-                gadget.print(&query, outmode);
-                if let OutputMode::Block = outmode {
-                    println!();
-                }
+                gadgets_hs.insert(gadget);
             }
         }
     }
 
+    for gadget in &gadgets_hs {
+        gadget.print(&query, outmode);
+        if let OutputMode::Block = outmode {
+            println!();
+        }
+    }
+
     println!("----------");
-    println!("Found {} unique gadgets.", count);
+    println!("Found {} unique gadgets.", gadgets_hs.len());
 }

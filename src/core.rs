@@ -25,8 +25,34 @@ const BRANCH_INSNS: &[RiscVInsn] = &[
     RISCV_INS_C_JR,
 ];
 
-pub fn is_branching_ins(id: InsnId) -> bool {
+const ARITHM_INSNS: &[RiscVInsn] = &[
+    RISCV_INS_ADDI,
+    RISCV_INS_ADDI,
+    RISCV_INS_ADDIW,
+    RISCV_INS_C_ADDI16SP,
+    RISCV_INS_C_ADDI4SPN,
+    RISCV_INS_C_ADDI,
+    RISCV_INS_C_ADDIW,
+];
+
+const LOAD_INSNS: &[RiscVInsn] = &[
+    RISCV_INS_LW,
+    RISCV_INS_LH,
+    RISCV_INS_LD,
+    RISCV_INS_C_LW,
+    RISCV_INS_C_LD,
+];
+
+pub fn is_branching(id: InsnId) -> bool {
     return BRANCH_INSNS.contains(&RiscVInsn::from(id.0));
+}
+
+pub fn is_arithmetic(id: InsnId) -> bool {
+    return ARITHM_INSNS.contains(&RiscVInsn::from(id.0));
+}
+
+pub fn is_load(id: InsnId) -> bool {
+    return LOAD_INSNS.contains(&RiscVInsn::from(id.0));
 }
 
 pub fn ins_from_str(ins: &str) -> Result<InsnId, RVError> {
@@ -252,7 +278,7 @@ pub fn find_gadget_roots<'a>(cs: &'a capstone::Capstone, code: &[u8], jr: Option
         if let Ok(insns) = cs.disasm_count(&code[off..], off as u64, 1) {
             if let Some(ins) = insns.first() {
                 if let Ok(ins) = GadgetInsn::create(cs, ins) {
-                    if is_branching_ins(ins.id()) {
+                    if is_branching(ins.id()) {
                         for op in ins.operands() {
                             if let RiscVOperand::Reg(reg) = op {
                                 if reg == &RegId(0) {
@@ -283,37 +309,38 @@ pub fn find_gadgets_at_root<'a>(cs: &'a Capstone, root: GadgetRoot<'a>, addr: u6
     return gadgets;
 }
 
-fn disas_back_at<'a>(cs: &'a Capstone, gadgets: &mut Vec<Gadget<'a>>, root: GadgetRoot<'a>, insns: &mut Vec<GadgetInsn<'a>>, addr: u64, mut off: u64, code: &'a [u8], max: usize) {
-    if max == 0 || off == 0 {
-        if let Ok(g) = Gadget::create(root, insns.clone()) {
-            gadgets.push(g);
-        }
-        return;
+fn disas_back_at<'a>(cs: &'a Capstone, gadgets: &mut Vec<Gadget<'a>>, root: GadgetRoot<'a>, insns: &mut Vec<GadgetInsn<'a>>, addr: u64, off: u64, code: &'a [u8], max: usize) -> bool {
+    let mut found = false;
+
+    if max == 0 || off <= 0 {
+        return false;
     }
     
     for i in (MIN_INSSZ as u64 ..= MAX_INSSZ as u64).step_by(ALIGNMENT) {
+
         if i as u64 > off {
             break;
         }
-        off -= i;
-        if let Ok(ins) = cs.disasm_count(&code[off as usize..], addr + off, 1) {
+        if let Ok(ins) = cs.disasm_count(&code[(off - i) as usize..], addr + (off - i), 1) {
             if let Some(ins) = ins.first() {
                 if ins.len() != i as usize {
-                    return;
+                    continue;
                 }
-                if is_branching_ins(ins.id()) {
-                    if let Ok(g) = Gadget::create(root, insns.clone()) {
-                        gadgets.push(g);
-                    }
-                    return;
+                if is_branching(ins.id()) {
+                    break;
                 }
                 if let Ok(ins) = GadgetInsn::create(cs, ins) {
                     insns.push(ins);
-                    disas_back_at(cs, gadgets, root.clone(), insns, addr, off, code, max - 1);
+                    if disas_back_at(cs, gadgets, root.clone(), insns, addr, off - i, code, max - 1) == false {
+                        if let Ok(g) = Gadget::create(root.clone(), insns.iter().rev().cloned().collect()) {
+                            gadgets.push(g);
+                            found = true;
+                        }
+                    } 
                     insns.pop();
                 }
             }
         }
     }
-
+    return found;
 }

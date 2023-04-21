@@ -1,12 +1,17 @@
 use std::fmt;
+use crate::core::{is_arithmetic, is_load};
 use std::ops::Deref;
+use std::hash::{Hash, Hasher};
+use std::collections::HashMap;
 
 use capstone::{
     Insn,
     InsnId,
+    RegId,
     OwnedInsn,
     Capstone,
     arch::riscv::RiscVOperand,
+    arch::riscv::RiscVOperand::*,
     arch::DetailsArchInsn,
 };
 use colored::*;
@@ -89,6 +94,13 @@ impl<'a> GadgetInsn<'a> {
         return &self.ops;
     }
 
+    pub fn regs(&self) -> impl Iterator<Item=RegId>+'_ {
+        self.operands().iter().filter_map(|op| match op {
+            &Reg(id) => Some(id),
+            _ => None,
+        })
+    }
+
     pub fn satisfies(&self, q: &Query) -> bool {
         return q.is_satisfied_by_ins(self);
     }
@@ -140,6 +152,33 @@ pub struct Gadget<'a> {
     insns: Vec<GadgetInsn<'a>>,
 }
 
+impl<'a> Hash for Gadget<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for ins in &self.insns {
+            ins.bytes().hash(state);
+        }
+        self.root.root.bytes().hash(state);
+    }
+}
+
+impl<'a> PartialEq for Gadget<'a> {
+    fn eq(&self, other: &Gadget) -> bool {
+        if self.insns.len() != other.insns.len() {
+            return false;
+        }
+        for (si, oi) in self.insns.iter().zip(other.insns.iter()) {
+            if si.bytes() != oi.bytes() {
+                return false
+            }
+        }
+        return self.root.root.bytes() == other.root.root.bytes();
+    }
+}
+
+impl<'a> Eq for Gadget<'a> {
+
+}
+
 impl<'a> Gadget<'a> {
 
     pub fn create(root: GadgetRoot<'a>, insns: Vec<GadgetInsn<'a>>) -> Result<Self, RVError> {
@@ -150,6 +189,75 @@ impl<'a> Gadget<'a> {
 
         return Ok(g);
     }
+
+    pub fn is_dispatcher(&self) -> bool {
+        #[derive(Clone, Copy, Default)]
+        struct State { load: bool, add: bool }
+
+        let mut states: HashMap<RegId, State> = HashMap::new();
+        let jrid = self.root.root.regs().last().unwrap();
+
+        for ins in &self.insns {
+            if is_load(ins.id()) {
+                let src = ins.regs().last().unwrap();
+                let dst = ins.regs().next().unwrap();
+                if dst == jrid {
+                    states.entry(src).or_default().load = true;
+                }
+            } else if is_arithmetic(ins.id()) {
+                if let Some(dst) = ins.regs().next() {
+                    states.entry(dst).or_default().add = true;
+                }
+            }
+        }
+        return states.values().any(|s| s.add && s.load);
+    }
+
+/*
+    pub fn is_dispatcher(&self) -> bool {
+        use State::*;
+        enum State {
+            Arithmetic,
+            Load(RegId),
+            Jump(RegId),
+        }
+        let mut state = State::Arithmetic;
+
+        for ins in &self.insns {
+            match state {
+                Arithmetic => {
+                    if is_arithmetic(ins.id()) {
+                        if let Some(RiscVOperand::Reg(id)) = ins.operands().first() {
+                            state = State::Load(*id)
+                        }
+                    }
+                },
+                Load(id) => {
+                    if is_load(ins.id()) {
+                        if let Some(RiscVOperand::Reg(r1)) = ins.operands().first() {
+                            if let Some(RiscVOperand::Reg(r2)) = ins.operands().last() {
+                                if *r2 == id && *r2 != *r1 {
+                                    state = State::Jump(*r1)
+                                }
+                            }
+                        }
+                    }
+                },
+                Jump(id) => {
+                    for op in self.root.root.operands() {
+                        if let RiscVOperand::Reg(dst) = op {
+                            if id == *dst {
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                },
+            } 
+        }
+        return false;
+    }
+*/
 
     pub fn insns(&self) -> &Vec<GadgetInsn> {
         return &self.insns;
@@ -167,7 +275,7 @@ impl<'a> Gadget<'a> {
     }
 
     fn print_block(&self, q: &Query) {
-        for ins in self.insns.iter().rev() {
+        for ins in self.insns.iter() {
             ins.print(q, false);
         }
         self.root.root.print(q, true);
