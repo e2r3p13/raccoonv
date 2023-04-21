@@ -10,14 +10,15 @@ pub struct Query {
     pub rr: Option<capstone::RegId>,
     pub wr: Option<capstone::RegId>,
     pub op: Option<capstone::InsnId>,
+    pub ds: bool,
     empty: bool,
 }
 
 impl Query {
 
-    pub fn create_from(rr: Option<RegId>, wr: Option<RegId>, op: Option<InsnId>) -> Self {
+    pub fn create_from(rr: Option<RegId>, wr: Option<RegId>, op: Option<InsnId>, ds: bool) -> Self {
         let empty: bool = rr == None && wr == None && op == None;
-        return Query {rr, wr, op, empty};
+        return Query {rr, wr, op, ds, empty};
     }
 
     pub fn is_satisfied_by_ins(&self, ins: &GadgetInsn) -> bool {
@@ -45,6 +46,9 @@ impl Query {
     }
 
     pub fn is_satisfied_by_gadget(&self, gadget: &Gadget) -> bool {
+        if self.ds && !gadget.is_dispatcher() {
+            return false
+        }
         if self.empty {
             return true;
         }
