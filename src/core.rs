@@ -275,55 +275,79 @@ pub fn find_gadget_roots<'a>(cs: &'a capstone::Capstone, code: &[u8], jr: Option
     return roots;
 }
 
-pub fn find_gadgets_at_root<'a>(cs: &'a Capstone, root: GadgetRoot<'a>, addr: u64, code: &'a [u8], max: usize) -> Vec<Gadget<'a>> {
+pub fn find_gadgets_at_root<'a>(
+    cs: &'a Capstone,
+    root: GadgetRoot<'a>,
+    addr: u64,
+    code: &'a [u8],
+    max: usize,
+) -> Vec<Gadget<'a>> {
     let mut gadgets: Vec<Gadget> = Vec::new();
-    let mut insns: Vec<GadgetInsn> = Vec::new();
 
-    disas_back_at(cs, &mut gadgets, root.clone(), &mut insns, addr, root.off, code, max);
-    return gadgets;
-}
+    let off = root.off;
 
-enum RState {
-    Ongoing,
-    Found,
-    Continue,
-}
-
-fn disas_back_at<'a>(cs: &'a Capstone, gadgets: &mut Vec<Gadget<'a>>, root: GadgetRoot<'a>, insns: &mut Vec<GadgetInsn<'a>>, addr: u64, off: u64, code: &'a [u8], max: usize) -> RState {
-    let mut state = RState::Ongoing;
-
-    if max == 0 || off <= 0 {
-        return RState::Found;
+    #[derive(Clone, Copy)]
+    enum StackState {
+        // off
+        Unvisited(u64),
+        // off, pushed
+        Compressed(u64, bool),
+        // pushed
+        Visited(bool),
     }
-    
-    for i in (MIN_INSSZ as u64 ..= MAX_INSSZ as u64).step_by(ALIGNMENT) {
-        if i as u64 > off {
-            break;
-        }
-        if let Ok(ins) = cs.disasm_count(&code[(off - i) as usize..], addr + (off - i), 1) {
-            if let Some(ins) = ins.first() {
-                if ins.len() != i as usize {
-                    continue;
-                }
-                if is_branching_ins(ins.id()) {
-                    break;
-                }
-                if let Ok(ins) = GadgetInsn::create(cs, ins) {
-                    insns.push(ins);
-                    state = disas_back_at(cs, gadgets, root.clone(), insns, addr, off - i, code, max - 1);
-                    match state {
-                        RState::Ongoing => {
+    use StackState::*;
 
-                        },
-                        RState::Found => {
-                            if let Ok(g) = Gadget::create(root.clone(), insns.clone()) {
-                                gadgets.push(g);
+    let mut stack_insns: Vec<GadgetInsn<'a>> = vec![];
+    let mut stack: Vec<StackState> = vec![Unvisited(off)];
+
+    while let Some(state) = stack.pop() {
+        match state {
+            Unvisited(off) => {
+                if 4 <= off && stack_insns.len() < max {
+                    if let Ok(ins) =
+                        cs.disasm_all(&code[(off - 4) as usize..off as usize], addr + off - 4)
+                    {
+                        if let Some(ins) = ins.first() {
+                            if ins.len() == 4 as usize && !is_branching_ins(ins.id()) {
+                                if let Ok(insn) = GadgetInsn::create(cs, ins) {
+                                    stack.push(Compressed(off, true));
+                                    stack.push(Unvisited(off - 4));
+                                    stack_insns.push(insn);
+                                    continue;
+                                }
                             }
-                        },
+                        }
                     }
                 }
+                stack.push(Compressed(off, false))
+            }
+            Compressed(off, pushed) => {
+                if 2 <= off && stack_insns.len() < max {
+                    if let Ok(ins) =
+                        cs.disasm_count(&code[(off - 2) as usize..off as usize], addr + off - 2, 1)
+                    {
+                        if let Some(ins) = ins.first() {
+                            if ins.len() == 2 as usize && !is_branching_ins(ins.id()) {
+                                if let Ok(insn) = GadgetInsn::create(cs, ins) {
+                                    stack.append(&mut vec![Visited(true), Unvisited(off - 2)]);
+                                    stack_insns.push(insn);
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+                }
+                stack.push(Visited(pushed))
+            }
+            Visited(pushed) => {
+                if !pushed && !stack_insns.is_empty(){
+                    if let Ok(g) = Gadget::create(root.clone(), stack_insns.clone()) {
+                        gadgets.push(g);
+                    }
+                }
+                stack_insns.pop();
             }
         }
     }
-    return !over;
+    return gadgets;
 }
