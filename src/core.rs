@@ -176,7 +176,7 @@ pub fn ins_from_str(ins: &str) -> Result<InsnId, RVError> {
         "xori" => RISCV_INS_XORI,
         _ => RISCV_INS_INVALID,
     };
-    if !ins.starts_with("c.") {
+    if val == RISCV_INS_INVALID && !ins.starts_with("c.") {
         return ins_from_str(&format!("c.{}", ins));
     }
     match val {
