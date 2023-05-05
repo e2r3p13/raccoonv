@@ -9,6 +9,7 @@ use crate::gadget::{Gadget, GadgetInsn};
 pub struct Query {
     pub rr: Option<capstone::RegId>,
     pub wr: Option<capstone::RegId>,
+    pub imm: Option<i64>,
     pub op: Option<capstone::InsnId>,
     pub ds: bool,
     empty: bool,
@@ -16,9 +17,9 @@ pub struct Query {
 
 impl Query {
 
-    pub fn create_from(rr: Option<RegId>, wr: Option<RegId>, op: Option<InsnId>, ds: bool) -> Self {
-        let empty: bool = rr == None && wr == None && op == None;
-        return Query {rr, wr, op, ds, empty};
+    pub fn create_from(rr: Option<RegId>, wr: Option<RegId>, imm: Option<i64>, op: Option<InsnId>, ds: bool) -> Self {
+        let empty: bool = rr == None && wr == None && op == None && imm == None;
+        return Query {rr, wr, imm, op, ds, empty};
     }
 
     pub fn is_satisfied_by_ins(&self, ins: &GadgetInsn) -> bool {
@@ -30,7 +31,6 @@ impl Query {
                 return false;
             }
         }
-
         if let Some(wr) = self.wr {
             if !ins.operands().contains(&RiscVOperand::Reg(wr)) {
                 return false;
@@ -41,7 +41,11 @@ impl Query {
                 return false;
             }
         }
-
+        if let Some(val) = self.imm {
+            if !ins.operands().contains(&RiscVOperand::Imm(val)) {
+                return false;
+            }
+        }
         return true;
     }
 

@@ -27,7 +27,7 @@ struct Args {
     dispatcher: bool,
 
     /// Display gadgets in a single line
-    #[arg(short, long)]
+    #[arg(long)]
     inline: bool,
 
     /// Only search gadgets with at maximum <max> instructions
@@ -41,6 +41,10 @@ struct Args {
     /// Only find gadgets where the <reg> register is written to
     #[arg(short, long, value_name="reg", value_parser=core::reg_from_str)]
     wr: Option<RegId>,
+
+    /// Only find gadgets where the <imm> immediate is used
+    #[arg(short, long, value_name="imm")]
+    imm: Option<i64>,
 
     /// Only find gadgets where the <reg> register is read from
     #[arg(short, long, value_name="reg", value_parser=core::reg_from_str)]
@@ -64,7 +68,7 @@ fn main() {
         true => OutputMode::Inline,
         false => OutputMode::Block,
     };
-    let query = Query::create_from(args.rr, args.wr, args.op, args.dispatcher);
+    let query = Query::create_from(args.rr, args.wr, args.imm, args.op, args.dispatcher);
 
     /* ELF parsing */
 
