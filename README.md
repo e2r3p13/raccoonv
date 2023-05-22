@@ -4,7 +4,7 @@ RaccoonV is a linux command line tool. It has many advantages compared to a real
 
 Another advantage is that it is made out of Rust instead of legs, snouts and stuff like this. This makes it more robust than a real raccoon, indeed.
 
-⚠️ It only works on **Linux** for **elf** binaries with **Risc-V** architecture (ISA RV64IC).
+⚠️ It only works on **Linux** for **elf** binaries with **Risc-V** architecture (ISA RV32IC).
 
 ## Quick start
 
@@ -34,12 +34,17 @@ Arguments:
   <PATH>  Path of the target binary
 
 Options:
-  -i, --inline    Display gadgets in a single line
-  -w, --wr <reg>  Only find gadgets where the <reg> register is written to
-  -r, --rr <reg>  Only find gadgets where the <reg> register is read from
-  -o, --op <ins>  Only find gadgets containing the <ins> instruction
-  -h, --help      Print help
-  -V, --version   Print version
+  -d, --dispatcher  Find dispatcher gadgets
+      --inline      Display gadgets in a single line
+  -m, --max <MAX>   Only search gadgets with at maximum <max> instructions [default: 5]
+  -j, --jr <reg>    Only find gadgets ending with a jump to <reg> register
+  -w, --wr <reg>    Only find gadgets where the <reg> register is written to
+  -i, --imm <imm>   Only find gadgets where the <imm> immediate is used
+  -r, --rr <reg>    Only find gadgets where the <reg> register is read from
+  -o, --op <ins>    Only find gadgets containing the <ins> instruction
+      --raw         Process raw code instead of elf file
+  -h, --help        Print help
+  -V, --version     Print version
 ```
 
 ---
