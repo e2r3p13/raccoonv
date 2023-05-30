@@ -213,52 +213,6 @@ impl<'a> Gadget<'a> {
         return states.values().any(|s| s.add && s.load);
     }
 
-/*
-    pub fn is_dispatcher(&self) -> bool {
-        use State::*;
-        enum State {
-            Arithmetic,
-            Load(RegId),
-            Jump(RegId),
-        }
-        let mut state = State::Arithmetic;
-
-        for ins in &self.insns {
-            match state {
-                Arithmetic => {
-                    if is_arithmetic(ins.id()) {
-                        if let Some(RiscVOperand::Reg(id)) = ins.operands().first() {
-                            state = State::Load(*id)
-                        }
-                    }
-                },
-                Load(id) => {
-                    if is_load(ins.id()) {
-                        if let Some(RiscVOperand::Reg(r1)) = ins.operands().first() {
-                            if let Some(RiscVOperand::Reg(r2)) = ins.operands().last() {
-                                if *r2 == id && *r2 != *r1 {
-                                    state = State::Jump(*r1)
-                                }
-                            }
-                        }
-                    }
-                },
-                Jump(id) => {
-                    for op in self.root.root.operands() {
-                        if let RiscVOperand::Reg(dst) = op {
-                            if id == *dst {
-                                return true;
-                            }
-                        }
-                    }
-                    return false;
-                },
-            } 
-        }
-        return false;
-    }
-*/
-
     pub fn insns(&self) -> &Vec<GadgetInsn> {
         return &self.insns;
     }
